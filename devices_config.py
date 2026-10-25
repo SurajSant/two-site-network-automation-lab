@@ -1,5 +1,7 @@
+import sys
 from netmiko import ConnectHandler
 from getpass import getpass
+
 
 
 # 1. The data: one dictionary per switch (Phase-1)
@@ -18,7 +20,7 @@ switches = [
      "uplink_ip": "192.168.100.14", "uplink_net": "192.168.100.12"},
 ]
 
-# One dictionary per router (Phases 2 and 3): inside links, ISP links and BGP peers
+# One dictionary per router (Phases 2-4): inside links, ISP links, BGP peers and NAT
 routers = [
     {"name": "R1", "mgmt_ip": "192.168.203.11", "loopback": "192.168.255.1",
      "links": [
@@ -27,8 +29,8 @@ routers = [
          {"intf": "Gi0/2", "ip": "192.168.100.17", "net": "192.168.100.16"},  # to R2
      ],
      "isp_links": [
-         {"intf": "Gi0/3", "ip": "203.0.113.2"},                              # to ISP1
-         {"intf": "Gi0/4", "ip": "198.51.100.2"},                             # to ISP2
+         {"intf": "Gi0/3", "ip": "203.0.113.2",  "isp": "ISP1"},              # to ISP1
+         {"intf": "Gi0/4", "ip": "198.51.100.2", "isp": "ISP2"},              # to ISP2
      ],
      "ebgp_peers": [
          {"ip": "203.0.113.1",  "as": "65101"},                               # ISP1
@@ -42,8 +44,8 @@ routers = [
          {"intf": "Gi0/0", "ip": "192.168.100.18", "net": "192.168.100.16"},  # to R1
      ],
      "isp_links": [
-         {"intf": "Gi0/4", "ip": "203.0.113.6"},                              # to ISP1
-         {"intf": "Gi0/3", "ip": "198.51.100.6"},                             # to ISP2
+         {"intf": "Gi0/4", "ip": "203.0.113.6",  "isp": "ISP1"},              # to ISP1
+         {"intf": "Gi0/3", "ip": "198.51.100.6", "isp": "ISP2"},              # to ISP2
      ],
      "ebgp_peers": [
          {"ip": "203.0.113.5",  "as": "65101"},                               # ISP1
@@ -161,6 +163,25 @@ def build_router_conf(rt):
     # 5. Pass the default route into OSPF
     lines.append("router ospf 1")
     lines.append(" default-information originate")
+
+    # 6. NAT / PAT (Phase 4)
+    # 6.1 The access list: which traffic to translate
+    lines.append("ip access-list standard NAT-INSIDE")
+    lines.append(" permit 192.168.0.0 0.0.255.255")
+
+    # 6.2 Mark every inside link
+    for link in rt["links"]:
+        lines.append("interface " + link["intf"])
+        lines.append(" ip nat inside")
+
+    # 6.3 For each ISP link: mark it outside, then its route-map and NAT rule
+    for isp in rt["isp_links"]:
+        lines.append("interface " + isp["intf"])
+        lines.append(" ip nat outside")
+        lines.append("route-map NAT-" + isp["isp"] + " permit 10")
+        lines.append(" match ip address NAT-INSIDE")
+        lines.append(" match interface " + isp["intf"])
+        lines.append("ip nat inside source route-map NAT-" + isp["isp"] + " interface " + isp["intf"] + " overload")
     
     return lines
 
@@ -180,8 +201,13 @@ def push_config(device, config, password):
     return output
 
 
-# 4. The worker: for each switch, build, save, and push
-password = getpass("Password: ")           # asked once, never stored in the file
+# 4. # 4. The worker: for each switch and router, build, save, and push (with --push)
+PUSH = "--push" in sys.argv
+
+if PUSH:
+    password = getpass("Password: ")           # asked once, never stored in the file
+else:
+    password = ""
 
 for sw in switches:
     config = build_switch_config(sw)
