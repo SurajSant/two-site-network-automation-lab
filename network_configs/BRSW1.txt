@@ -1,0 +1,60 @@
+hostname BRSW1
+ip routing
+vlan 10
+ name STAFF
+vlan 20
+ name GUEST
+interface Gi0/1
+ switchport mode access
+ switchport access vlan 10
+ spanning-tree portfast
+interface Gi0/2
+ switchport mode access
+ switchport access vlan 20
+ spanning-tree portfast
+interface Vlan10
+ ip address 192.168.31.1 255.255.255.0
+ no shutdown
+interface Vlan20
+ ip address 192.168.32.1 255.255.255.0
+ no shutdown
+ip dhcp excluded-address 192.168.31.1 192.168.31.9
+ip dhcp excluded-address 192.168.32.1 192.168.32.9
+ip dhcp pool STAFF
+ network 192.168.31.0 255.255.255.0
+ default-router 192.168.31.1
+ip dhcp pool GUEST
+ network 192.168.32.0 255.255.255.0
+ default-router 192.168.32.1
+interface Loopback0
+ ip address 192.168.255.21 255.255.255.255
+interface Gi0/0
+ no switchport
+ ip address 192.168.100.10 255.255.255.252
+ no shutdown
+router ospf 1
+ router-id 192.168.255.21
+ network 192.168.31.0 0.0.0.255 area 0
+ network 192.168.32.0 0.0.0.255 area 0
+ network 192.168.100.8 0.0.0.3 area 0
+ network 192.168.255.21 0.0.0.0 area 0
+ passive-interface Vlan10
+ passive-interface Vlan20
+no ip access-list extended STAFF-IN
+ip access-list extended STAFF-IN
+deny ip 192.168.31.0 0.0.0.255 192.168.12.0 0.0.0.255
+deny ip 192.168.31.0 0.0.0.255 192.168.22.0 0.0.0.255
+deny ip 192.168.31.0 0.0.0.255 192.168.32.0 0.0.0.255
+deny ip 192.168.31.0 0.0.0.255 192.168.42.0 0.0.0.255
+ permit ip any any
+no ip access-list extended GUEST-IN
+ip access-list extended GUEST-IN
+deny ip 192.168.32.0 0.0.0.255 192.168.11.0 0.0.0.255
+deny ip 192.168.32.0 0.0.0.255 192.168.21.0 0.0.0.255
+deny ip 192.168.32.0 0.0.0.255 192.168.31.0 0.0.0.255
+deny ip 192.168.32.0 0.0.0.255 192.168.41.0 0.0.0.255
+ permit ip any any
+interface Vlan10
+ ip access-group STAFF-IN in
+interface Vlan20
+ ip access-group GUEST-IN in

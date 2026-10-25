@@ -1,0 +1,53 @@
+hostname R2
+interface Loopback0
+ ip address 192.168.255.2 255.255.255.255
+interface Gi0/1
+ ip address 192.168.100.9 255.255.255.252
+ no shutdown
+interface Gi0/2
+ ip address 192.168.100.13 255.255.255.252
+ no shutdown
+interface Gi0/0
+ ip address 192.168.100.18 255.255.255.252
+ no shutdown
+router ospf 1
+ router-id 192.168.255.2
+ network 192.168.255.2 0.0.0.0 area 0
+ network 192.168.100.8 0.0.0.3 area 0
+ network 192.168.100.12 0.0.0.3 area 0
+ network 192.168.100.16 0.0.0.3 area 0
+interface Gi0/4
+ ip address 203.0.113.6 255.255.255.252
+ no shutdown
+interface Gi0/3
+ ip address 198.51.100.6 255.255.255.252
+ no shutdown
+router bgp 65000
+ bgp router-id 192.168.255.2
+ neighbor 203.0.113.5 remote-as 65101
+ neighbor 198.51.100.5 remote-as 65102
+ neighbor 192.168.255.1 remote-as 65000
+ neighbor 192.168.255.1 update-source Loopback0
+ neighbor 192.168.255.1 next-hop-self
+router ospf 1
+ default-information originate
+ip access-list standard NAT-INSIDE
+ permit 192.168.0.0 0.0.255.255
+interface Gi0/1
+ ip nat inside
+interface Gi0/2
+ ip nat inside
+interface Gi0/0
+ ip nat inside
+interface Gi0/4
+ ip nat outside
+route-map NAT-ISP1 permit 10
+ match ip address NAT-INSIDE
+ match interface Gi0/4
+ip nat inside source route-map NAT-ISP1 interface Gi0/4 overload
+interface Gi0/3
+ ip nat outside
+route-map NAT-ISP2 permit 10
+ match ip address NAT-INSIDE
+ match interface Gi0/3
+ip nat inside source route-map NAT-ISP2 interface Gi0/3 overload
