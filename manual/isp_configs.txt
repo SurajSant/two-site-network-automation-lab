@@ -1,0 +1,48 @@
+! ISP1 and ISP2 are configured by hand, not by the script.
+! Paste each block into that router's console.
+
+! ---------- ISP1 (AS 65101) ----------
+enable
+configure terminal
+hostname ISP1
+interface Loopback0
+ ip address 8.8.8.8 255.255.255.255
+interface Gi0/0
+ description to R1
+ ip address 203.0.113.1 255.255.255.252
+ no shutdown
+interface Gi0/1
+ description to R2
+ ip address 203.0.113.5 255.255.255.252
+ no shutdown
+router bgp 65101
+ neighbor 203.0.113.2 remote-as 65000
+ neighbor 203.0.113.2 default-originate
+ neighbor 203.0.113.6 remote-as 65000
+ neighbor 203.0.113.6 default-originate
+ network 8.8.8.8 mask 255.255.255.255
+end
+write memory
+
+! ---------- ISP2 (AS 65102) ----------
+enable
+configure terminal
+hostname ISP2
+interface Loopback0
+ ip address 9.9.9.9 255.255.255.255
+interface Gi0/1
+ description to R1
+ ip address 198.51.100.1 255.255.255.252
+ no shutdown
+interface Gi0/0
+ description to R2
+ ip address 198.51.100.5 255.255.255.252
+ no shutdown
+router bgp 65102
+ neighbor 198.51.100.2 remote-as 65000
+ neighbor 198.51.100.2 default-originate
+ neighbor 198.51.100.6 remote-as 65000
+ neighbor 198.51.100.6 default-originate
+ network 9.9.9.9 mask 255.255.255.255
+end
+write memory

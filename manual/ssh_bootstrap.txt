@@ -1,0 +1,39 @@
+! One-time setup on each device so the script can log in over SSH.
+! Typed on the console. Change the hostname, port and IP per device.
+!
+! Device   Mgmt port   Mgmt IP
+! R1       Gi0/0       192.168.203.11
+! R2       Gi0/5       192.168.203.12
+! HQSW1    Gi0/3       192.168.203.13
+! HQSW2    Gi0/3       192.168.203.14
+! BRSW1    Gi0/3       192.168.203.15
+! BRSW2    Gi0/3       192.168.203.16
+!
+! Example for HQSW1 (leave out "no switchport" on the routers):
+
+enable
+configure terminal
+hostname HQSW1
+ip domain-name lab.local
+username admin privilege 15 secret <your-password>
+crypto key generate rsa modulus 2048
+ip ssh version 2
+interface Gi0/3
+ no switchport
+ description MGMT
+ ip address 192.168.203.13 255.255.255.0
+ no shutdown
+line vty 0 4
+ login local
+ transport input ssh
+end
+write memory
+
+! Windows SSH client: these old IOS images only offer SHA-1 algorithms.
+! Add this to C:\Users\<you>\.ssh\config so it only applies to the lab:
+!
+! Host 192.168.203.*
+!     KexAlgorithms +diffie-hellman-group14-sha1
+!     HostKeyAlgorithms +ssh-rsa
+!     MACs +hmac-sha1
+!     Ciphers +aes128-cbc,aes256-cbc
