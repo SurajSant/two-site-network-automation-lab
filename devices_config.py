@@ -116,6 +116,29 @@ def build_switch_config(sw):
     lines.append(" passive-interface Vlan10")
     lines.append(" passive-interface Vlan20")
 
+    # Phase 5 : ACL Staff and Gues cannot raeach other at any site
+    # Staff side: deny this switch's Staff subnet -> every Guest subnet
+    lines.append("no ip access-list extended STAFF-IN")
+    lines.append( "ip access-list extended STAFF-IN")
+    for other in switches:
+        o = str(other["site_id"])
+        lines.append("deny ip 192.168." + site + "1.0 0.0.0.255 192.168." + o + "2.0 0.0.0.255")
+    lines.append(" permit ip any any")
+
+    # Guest side: deny this switch's Guest subnet -> every Staff subnet
+    lines.append("no ip access-list extended GUEST-IN")
+    lines.append("ip access-list extended GUEST-IN")
+    for other in switches:
+        o = str(other["site_id"])
+        lines.append("deny ip 192.168." + site + "2.0 0.0.0.255 192.168." + o + "1.0 0.0.0.255")
+    lines.append(" permit ip any any")
+
+    #Applying them to the inbound SVIs
+    lines.append("interface Vlan10")
+    lines.append(" ip access-group STAFF-IN in")
+    lines.append("interface Vlan20")
+    lines.append(" ip access-group GUEST-IN in")
+   
     return lines
 
 def build_router_conf(rt):
@@ -139,7 +162,7 @@ def build_router_conf(rt):
     for link in rt["links"]:
         lines.append(" network " + link["net"] + " 0.0.0.3 area 0")
 
-    #BGP (Phase 3)
+  
     # BGP (Phase 3)
     # 1. For each ISP link: interface, IP address, no shutdown
     for isp in rt["isp_links"]:
@@ -204,12 +227,20 @@ def push_config(device, config, password):
 # 4. # 4. The worker: for each switch and router, build, save, and push (with --push)
 PUSH = "--push" in sys.argv
 
+ONLY = None                                        # None = all devices
+if "--only" in sys.argv:
+    ONLY = sys.argv[sys.argv.index("--only") + 1]  # the word after --only
+
 if PUSH:
-    password = getpass("Password: ")           # asked once, never stored in the file
+    password = getpass("Password: ")    # only asked when we actually push
 else:
     password = ""
 
+failed = []                             # names of devices that failed to push
+
 for sw in switches:
+    if ONLY and sw["name"] != ONLY:
+        continue                        # not the device we asked for: skip it
     config = build_switch_config(sw)
 
     # save a copy of the config
@@ -220,38 +251,49 @@ for sw in switches:
     print("saved", filename)
 
     # push it to the switch; if this switch fails, report it and carry on
-    print("Connecting to", sw["name"], "at", sw["mgmt_ip"], "...")
-    try:
-        output = push_config(sw, config, password)
-        print(output)
-        print("Pushed config to", sw["name"])
-    except Exception as error:
-        print("FAILED on", sw["name"], ":", error)
+    if PUSH:
+        print("Connecting to", sw["name"], "at", sw["mgmt_ip"], "...")
+        try:
+            output = push_config(sw, config, password)
+            print(output)
+            print("Pushed config to", sw["name"])
+        except Exception as error:
+            print("FAILED on", sw["name"], ":", error)
+            failed.append(sw["name"])   # remember it for the summary
 
-           
     print("-" * 40)
-           
-print("Done.")
 
 for rt in routers:
+    if ONLY and rt["name"] != ONLY:
+        continue                        # not the device we asked for: skip it
     config = build_router_conf(rt)
 
-    #save a copy of the conf
+    # save a copy of the config
     filename = rt["name"] + ".txt"
     with open(filename, "w") as f:
         for line in config:
             f.write(line + "\n")
     print("saved", filename)
 
-    #push it to the routers: if this router fails, report it and carry om
-    print("Connecting to", rt["name"], "at", rt["mgmt_ip"], "...")
-    try:
-        output = push_config(rt, config, password)
-        print(output)
-        print("Pushed config to", rt["name"])
-    except Exception as error:
-        print("FAILED on", rt["name"], ":", error)
+    # push it to the router; if this router fails, report it and carry on
+    if PUSH:
+        print("Connecting to", rt["name"], "at", rt["mgmt_ip"], "...")
+        try:
+            output = push_config(rt, config, password)
+            print(output)
+            print("Pushed config to", rt["name"])
+        except Exception as error:
+            print("FAILED on", rt["name"], ":", error)
+            failed.append(rt["name"])   # remember it for the summary
 
     print("-" * 40)
 
-print("Done.")
+# Summary
+if PUSH:
+    if failed:
+        print("Done, but these devices FAILED:", failed)
+        print("Re-push one with: python devices_config.py --push --only <name>")
+    else:
+        print("Done. All devices pushed successfully.")
+else:
+    print("Done. Dry run: configs saved only. Run with --push to push them.")
